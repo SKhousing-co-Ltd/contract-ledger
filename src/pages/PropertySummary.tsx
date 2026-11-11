@@ -132,6 +132,7 @@ export default function PropertySummary() {
                   <tr className="clickable" onClick={() => setOpen(open === p.code ? null : p.code)}>
                     <td className="nowrap">
                       <span className="caret">{open === p.code ? '▾' : '▸'}</span> {p.code} {p.name}
+                      {masters.properties.find((x) => x.code === p.code)?.is_residential && <span className="tag" title="住宅（原価の課税仕入は共通対応）">住宅</span>}
                     </td>
                     <td className="small">{p.kind}</td>
                     <td className="r mono">{p.count}</td>

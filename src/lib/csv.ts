@@ -14,7 +14,7 @@ export const JOURNAL_CSV_HEADER = [
 export interface CsvOptions {
   taxCodes: TaxCode[]
   accounts: Account[]
-  properties: Pick<Property, 'code' | 'kind'>[]
+  properties: Pick<Property, 'code' | 'kind' | 'is_residential'>[]
   setting: (key: string) => string
   startSlipNo: number
 }
@@ -24,14 +24,15 @@ export interface CsvOptions {
  *   原価（5000番台）× オフィスビル・ホテルなど → 税区分マスタのコード（課税売上対応＝10）
  *   原価（5000番台）× 住宅・寮                  → 共通対応（11）
  *   販管費（6000番台）                           → 共通対応（11）
+ * 住宅は物件マスタの「住宅」フラグ（区分は集計用に「ビル」のまま）、寮は区分「寮・社宅」で判定する。
  * 消費税率区分は税区分マスタのまま（10%＝4、軽減8%＝5）。
  */
-export function purchaseTaxCode(baseCode: string, account: number, propertyKind: string | undefined, o: {
+export function purchaseTaxCode(baseCode: string, account: number, property: Pick<Property, 'kind' | 'is_residential'> | undefined, o: {
   commonCode: string; baseTaxableCode: string; commonKinds: string[]
 }): string {
   if (baseCode !== o.baseTaxableCode) return baseCode
   const sga = account >= 6000 && account < 7000
-  const residential = propertyKind !== undefined && o.commonKinds.includes(propertyKind)
+  const residential = Boolean(property?.is_residential) || (property !== undefined && o.commonKinds.includes(property.kind))
   return sga || residential ? o.commonCode : baseCode
 }
 
@@ -47,7 +48,7 @@ export function purchaseTaxCode(baseCode: string, account: number, propertyKind:
  *  - csv_date_format     yyyy/M/d（既定）／ yyyy/MM/dd ／ yyyyMMdd
  *  - csv_tax_code_taxable 課税売上対応の消費税コード（既定 10）。これを共通対応へ切り替える対象にする
  *  - csv_tax_code_common  共通対応の消費税コード（既定 11）
- *  - csv_common_kinds     共通対応にする物件区分（既定「住宅,寮・社宅」）
+ *  - csv_common_kinds     共通対応にする物件区分（既定「寮・社宅」）。住宅は物件の「住宅」フラグで判定
  * 損益科目でない科目（立替金・仮払金 などを費用側に使う場合）は消費税コード・率区分とも 0 にする。
  */
 export const CSV_DEFAULTS: Record<string, string> = {
@@ -61,7 +62,7 @@ export const CSV_DEFAULTS: Record<string, string> = {
   csv_date_format: 'yyyy/M/d',
   csv_tax_code_taxable: '10',
   csv_tax_code_common: '11',
-  csv_common_kinds: '住宅,寮・社宅',
+  csv_common_kinds: '寮・社宅',
 }
 
 export function fmtDate(iso: string, pattern: string): string {
@@ -79,7 +80,7 @@ export function buildJournalRows(entries: JournalEntry[], o: CsvOptions): string
   const inclusive = get('csv_amount_mode') !== 'exclusive'
   const toSegment = get('csv_property_column') !== 'dept'
   const s = (v: unknown) => (v === null || v === undefined ? '' : String(v))
-  const kind = new Map(o.properties.map((p) => [p.code, p.kind]))
+  const props = new Map(o.properties.map((p) => [p.code, p]))
   const common = {
     baseTaxableCode: get('csv_tax_code_taxable'),
     commonCode: get('csv_tax_code_common'),
@@ -94,7 +95,7 @@ export function buildJournalRows(entries: JournalEntry[], o: CsvOptions): string
     // 損益科目でない側（経過勘定・預金・立替金など）は消費税コードを付けない
     const t = taxName && acc.get(account)?.bs_pl !== 'BS' ? tax.get(taxName) : undefined
     const property = isCounter(account) ? get('csv_counter_segment') : s(dept)
-    const taxCode = t ? purchaseTaxCode(s(t.kokuyo_tax_code), account, dept == null ? undefined : kind.get(dept), common) : ''
+    const taxCode = t ? purchaseTaxCode(s(t.kokuyo_tax_code), account, dept == null ? undefined : props.get(dept), common) : ''
     const taxAmt = Number(taxAmount || 0)
     return {
       // 科目, 補助, 部門, 取引先, 銀行, セグメント1, 消費税コード, 消費税率区分
