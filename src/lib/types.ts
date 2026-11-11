@@ -135,6 +135,9 @@ export interface ContractItem {
   amount_excl: number | null
   note: string | null
   sort: number
+  /** 損益科目。入っている行があれば計上をこの行の金額の割合で科目別に分ける（科目明細） */
+  pl_account_code?: number | null
+  pl_sub_code?: string | null
 }
 
 export interface HistoryRow {
