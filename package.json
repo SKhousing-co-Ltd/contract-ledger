@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test:db": "node scripts/test-db.mjs",
-    "test:unit": "node --experimental-strip-types scripts/unit.test.mts"
+    "test:unit": "tsx scripts/unit.test.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
@@ -24,6 +24,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
   }

@@ -57,7 +57,7 @@ export default function Journals() {
     if (!target.length) return
     const missing = masters.taxCodes.filter((t) => target.some((e) => e.dr_tax_code === t.name || e.cr_tax_code === t.name) && !t.kokuyo_tax_code)
     const { buildJournalRows, encodeCsv, JOURNAL_CSV_HEADER } = await import('../lib/csv')
-    const rowsCsv = buildJournalRows(target, { taxCodes: masters.taxCodes, setting: s.setting, startSlipNo: slipNo })
+    const rowsCsv = buildJournalRows(target, { taxCodes: masters.taxCodes, accounts: masters.accounts, setting: s.setting, startSlipNo: slipNo })
     const enc = s.setting('csv_encoding') || 'Shift_JIS'
     const data = encodeCsv(header ? [JOURNAL_CSV_HEADER, ...rowsCsv] : rowsCsv, enc)
     const batch = `${period.slice(0, 7)}_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}`
@@ -113,9 +113,11 @@ export default function Journals() {
 
       <div className="card export-box">
         <div className="row wrap">
-          <Field label="開始伝票NO">
-            <input type="number" min={1} value={slipNo} onChange={(e) => setSlipNo(Number(e.target.value) || 1)} />
-          </Field>
+          {s.setting('csv_slip_no') === 'sequential' && (
+            <Field label="開始伝票NO">
+              <input type="number" min={1} value={slipNo} onChange={(e) => setSlipNo(Number(e.target.value) || 1)} />
+            </Field>
+          )}
           <label className="check"><input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} />見出し行を付ける</label>
           <label className="check"><input type="checkbox" checked={markExported} onChange={(e) => setMarkExported(e.target.checked)} />出力済みにする（作り直し対象から外す）</label>
           <span className="spacer" />

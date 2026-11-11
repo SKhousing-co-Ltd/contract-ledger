@@ -1,5 +1,5 @@
 import Encoding from 'encoding-japanese'
-import type { JournalEntry, TaxCode } from './types'
+import type { Account, JournalEntry, TaxCode } from './types'
 import { csvCell } from './format'
 
 /** シート「仕訳CSV」と同じ28列 */
@@ -13,36 +13,78 @@ export const JOURNAL_CSV_HEADER = [
 
 export interface CsvOptions {
   taxCodes: TaxCode[]
+  accounts: Account[]
   setting: (key: string) => string
   startSlipNo: number
 }
 
-function fmtDate(iso: string, pattern: string): string {
+/**
+ * 出力形式の既定値は、会計ソフトの取込サンプル（2026/9/30 の総振仕訳）に合わせている。設定（ct_settings）で変えられる。
+ *  - csv_amount_mode     inclusive（既定）… 金額は税込、消費税額・外税同時入力区分は空欄（内税）
+ *                        exclusive        … 金額は税抜、消費税額を出し、外税同時入力区分に csv_sotozei_on/off
+ *  - csv_property_column segment1（既定）… 物件コードをセグメント1へ（部門コードは空欄）／ dept … 部門コードへ
+ *  - csv_counter_segment 経過勘定・預金の側のセグメント（既定 0）
+ *  - csv_sub_default     補助科目が無いときの値（既定 0）
+ *  - csv_tax_code_none / csv_rate_kbn_none 消費税の無い側のコード（既定 0 / 0）
+ *  - csv_slip_no         blank（既定。会計ソフトで採番）／ sequential … 画面で指定した番号から連番
+ *  - csv_date_format     yyyy/M/d（既定）／ yyyy/MM/dd ／ yyyyMMdd
+ */
+export const CSV_DEFAULTS: Record<string, string> = {
+  csv_amount_mode: 'inclusive',
+  csv_property_column: 'segment1',
+  csv_counter_segment: '0',
+  csv_sub_default: '0',
+  csv_tax_code_none: '0',
+  csv_rate_kbn_none: '0',
+  csv_slip_no: 'blank',
+  csv_date_format: 'yyyy/M/d',
+}
+
+export function fmtDate(iso: string, pattern: string): string {
   const [y, m, d] = iso.slice(0, 10).split('-')
-  return pattern === 'yyyyMMdd' ? `${y}${m}${d}` : `${y}/${m}/${d}`
+  if (pattern === 'yyyyMMdd') return `${y}${m}${d}`
+  if (pattern === 'yyyy/MM/dd') return `${y}/${m}/${d}`
+  return `${y}/${Number(m)}/${Number(d)}`
 }
 
 export function buildJournalRows(entries: JournalEntry[], o: CsvOptions): string[][] {
+  const get = (k: string) => o.setting(k) || CSV_DEFAULTS[k] || ''
   const tax = new Map(o.taxCodes.map((t) => [t.name, t]))
-  const none = o.setting('csv_tax_code_none')
-  const on = o.setting('csv_sotozei_on')
-  const off = o.setting('csv_sotozei_off')
-  const fmt = o.setting('csv_input_format')
-  const datePattern = o.setting('csv_date_format') || 'yyyy/MM/dd'
+  const acc = new Map(o.accounts.map((a) => [a.code, a]))
+  const cash = Number(o.setting('cash_account')) || null
+  const inclusive = get('csv_amount_mode') !== 'exclusive'
+  const toSegment = get('csv_property_column') !== 'dept'
+  const s = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+
+  // 経過勘定（未払金・未払費用・前払費用 など）と預金の側は物件で分けない
+  const isCounter = (code: number) => code === cash || Boolean(acc.get(code)?.is_accrual)
+
+  const side = (account: number, sub: string | null, dept: number | null, vendor: number | null,
+    amount: number, taxAmount: number, taxName: string | null) => {
+    const t = taxName ? tax.get(taxName) : undefined
+    const property = isCounter(account) ? get('csv_counter_segment') : s(dept)
+    const taxAmt = Number(taxAmount || 0)
+    return {
+      // 科目, 補助, 部門, 取引先, 銀行, セグメント1, 消費税コード, 消費税率区分
+      cols: [
+        s(account), sub || get('csv_sub_default'), toSegment ? '' : property, s(vendor), '', toSegment ? property : '',
+        t ? s(t.kokuyo_tax_code) : get('csv_tax_code_none'), t ? s(t.kokuyo_rate_kbn) : get('csv_rate_kbn_none'),
+      ],
+      amount: String(Number(amount) + (inclusive ? taxAmt : 0)),
+      tax: inclusive || !taxAmt ? '' : String(taxAmt),
+      sotozei: inclusive ? '' : taxAmt ? get('csv_sotozei_on') : get('csv_sotozei_off'),
+    }
+  }
+
   return entries.map((e, i) => {
-    const drTax = e.dr_tax_code ? tax.get(e.dr_tax_code) : undefined
-    const crTax = e.cr_tax_code ? tax.get(e.cr_tax_code) : undefined
-    const s = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+    const dr = side(e.dr_account, e.dr_sub_code, e.dr_dept, e.dr_vendor, e.dr_amount, e.dr_tax_amount, e.dr_tax_code)
+    const cr = side(e.cr_account, e.cr_sub_code, e.cr_dept, e.cr_vendor, e.cr_amount, e.cr_tax_amount, e.cr_tax_code)
     return [
-      fmtDate(e.entry_date, datePattern),
-      s(e.dr_account), s(e.dr_sub_code), s(e.dr_dept), s(e.dr_vendor), '', '',
-      drTax ? s(drTax.kokuyo_tax_code) : none, drTax ? s(drTax.kokuyo_rate_kbn) : '',
-      s(e.dr_amount), s(e.dr_tax_amount || ''), '',
-      s(e.cr_account), s(e.cr_sub_code), s(e.cr_dept), s(e.cr_vendor), '', '',
-      crTax ? s(crTax.kokuyo_tax_code) : none, crTax ? s(crTax.kokuyo_rate_kbn) : '',
-      s(e.cr_amount), s(e.cr_tax_amount || ''),
-      s(e.description), '', String(o.startSlipNo + i), fmt,
-      Number(e.dr_tax_amount) ? on : off, Number(e.cr_tax_amount) ? on : off,
+      fmtDate(e.entry_date, get('csv_date_format')),
+      ...dr.cols, dr.amount, dr.tax, '',
+      ...cr.cols, cr.amount, cr.tax,
+      s(e.description), '', get('csv_slip_no') === 'sequential' ? String(o.startSlipNo + i) : '', o.setting('csv_input_format'),
+      dr.sotozei, cr.sotozei,
     ]
   })
 }
