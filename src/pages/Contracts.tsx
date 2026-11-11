@@ -137,6 +137,7 @@ export default function Contracts() {
         actions={
           <>
             <button onClick={exportCsv} disabled={!filtered.length}>CSV出力</button>
+            <Link className="button" to="/contracts/import">一括取り込み</Link>
             <Link className="button primary" to="/contracts/new">新規登録</Link>
           </>
         }
