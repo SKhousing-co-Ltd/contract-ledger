@@ -42,7 +42,12 @@ export default function Journals() {
     () => (rows ?? []).filter((r) => (!type || r.entry_type === type) && (exp === '' || (exp === 'yes') === Boolean(r.exported_at))),
     [rows, type, exp],
   )
-  const target = shown.filter((r) => selected.size === 0 || selected.has(r.id))
+  // 支払の仕訳（経過勘定／預金）は銀行処理（月末総振など）で会計ソフトに入るため、既定では CSV に含めない。
+  // アプリ内では経過勘定の残高を消し込むために引き続き生成する。設定 csv_include_payment=true で既定を変えられる
+  const [includePayment, setIncludePayment] = useState(s.setting('csv_include_payment') === 'true')
+  const picked = shown.filter((r) => selected.size === 0 || selected.has(r.id))
+  const target = includePayment ? picked : picked.filter((r) => r.entry_type !== 'payment')
+  const excludedPayments = picked.length - target.length
   const totals = useMemo(() => ({ dr: target.reduce((a, r) => a + Number(r.dr_amount) + Number(r.dr_tax_amount), 0) }), [target])
 
   function setPeriod(p: string) {
@@ -69,6 +74,7 @@ export default function Journals() {
     setSlipNo(slipNo + target.length)
     setMsg(
       `${target.length} 行をCSV出力しました（文字コード ${enc}）。` +
+        (excludedPayments ? `支払の仕訳 ${excludedPayments} 行は出力していません。` : '') +
         (missing.length ? `※税区分「${missing.map((m) => m.name).join('・')}」の会計ソフト消費税コードが未設定です（マスタ → 税区分）。` : ''),
     )
     if (markExported) load()
@@ -120,9 +126,13 @@ export default function Journals() {
           )}
           <label className="check"><input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} />見出し行を付ける</label>
           <label className="check"><input type="checkbox" checked={markExported} onChange={(e) => setMarkExported(e.target.checked)} />出力済みにする（作り直し対象から外す）</label>
+          <label className="check" title="支払の仕訳（未払費用など／普通預金）は銀行処理で会計ソフトに入るため、通常は出力しません。アプリ内では経過勘定の残高計算に使います">
+            <input type="checkbox" checked={includePayment} onChange={(e) => setIncludePayment(e.target.checked)} />支払の仕訳も出力する
+          </label>
           <span className="spacer" />
           <div className="export-sum">
-            {selected.size ? `選択 ${target.length} 行` : `表示中 ${target.length} 行`}・借方合計 {yen(totals.dr)} 円
+            {selected.size ? `選択 ${target.length} 行` : `出力対象 ${target.length} 行`}・借方合計 {yen(totals.dr)} 円
+            {excludedPayments > 0 && <span className="muted">（支払 {excludedPayments} 行は除外）</span>}
           </div>
           <button className="primary" onClick={exportCsv} disabled={!target.length}>CSV出力</button>
         </div>
