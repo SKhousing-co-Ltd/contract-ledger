@@ -3,20 +3,31 @@ import { parseDateInput, subtractMonths } from '../src/lib/format.ts'
 import { addMonthsKeepEnd, termInfo, termMonthsOf } from '../src/lib/term.ts'
 import { buildJournalRows } from '../src/lib/csv.ts'
 
-// 仕訳CSV：会計ソフトの取込サンプル（2026/9/30 総振）の行と同じ形になるか
-const csvRow = (settings: Record<string, string> = {}) => buildJournalRows([{
+// 仕訳CSV：会計ソフトの取込サンプル（サンプル1〜3）の行と同じ形になるか
+const csvRow = (settings: Record<string, string> = {}, e: Record<string, unknown> = {}) => buildJournalRows([{
   id: 1, period: '2026-09-01', entry_date: '2026-09-30', entry_type: 'accrual', source: 'auto', contract_id: 1, contract_no: 100001,
   dr_account: 6310, dr_sub_code: null, dr_dept: 1, dr_vendor: 902600, dr_amount: 300000, dr_tax_amount: 30000, dr_tax_code: '課税10%',
   cr_account: 3140, cr_sub_code: null, cr_dept: 1, cr_vendor: 902600, cr_amount: 330000, cr_tax_amount: 0, cr_tax_code: null,
-  description: '総振　その他　10月分コンサルティング費', exported_at: null, export_batch: null,
+  description: '総振　その他　10月分コンサルティング費', exported_at: null, export_batch: null, ...e,
 } as never], {
-  taxCodes: [{ name: '課税10%', rate: 0.1, kokuyo_tax_code: '11', kokuyo_rate_kbn: '4', sort: 1 }] as never,
-  accounts: [{ code: 3140, is_accrual: true }, { code: 6310, is_accrual: false }] as never,
+  // 税区分マスタには課税売上対応のコード（10）を登録しておき、科目・物件で共通対応（11）に切り替える
+  taxCodes: [
+    { name: '課税10%', rate: 0.1, kokuyo_tax_code: '10', kokuyo_rate_kbn: '4', sort: 1 },
+    { name: '軽減8%', rate: 0.08, kokuyo_tax_code: '10', kokuyo_rate_kbn: '5', sort: 2 },
+    { name: '不課税', rate: 0, kokuyo_tax_code: '40', kokuyo_rate_kbn: '0', sort: 3 },
+  ] as never,
+  accounts: [
+    { code: 3140, bs_pl: 'BS', is_accrual: true }, { code: 1520, bs_pl: 'BS', is_accrual: false },
+    { code: 6310, bs_pl: 'PL', is_accrual: false }, { code: 5310, bs_pl: 'PL', is_accrual: false }, { code: 5000, bs_pl: 'PL', is_accrual: false },
+  ] as never,
+  properties: [{ code: 1, kind: '本社' }, { code: 11, kind: 'ビル' }, { code: 26, kind: '住宅' }, { code: 202, kind: 'ホテル' }, { code: 402, kind: '寮・社宅' }],
   setting: (k) => ({ cash_account: '1120', ...settings })[k] ?? '',
   startSlipNo: 1,
 })[0].join(',')
-// サンプルは貸方金額だけ "330,000" と桁区切りだが、数値としては同じ
+// サンプル1の1行目（貸方金額だけ "330,000" と桁区切りだが、数値としては同じ）
 const SAMPLE_ROW = '2026/9/30,6310,0,,902600,,1,11,4,330000,,,3140,0,,902600,,0,0,0,330000,,総振　その他　10月分コンサルティング費,,,,,'
+// 借方の消費税コード／率区分だけ取り出す
+const drTax = (e: Record<string, unknown>) => csvRow({}, e).split(',').slice(7, 9).join('/')
 
 const T = '2026-10-16'
 const y = new Date().getFullYear()
@@ -27,6 +38,15 @@ const cases: [string, unknown, unknown][] = [
   ['csv matches sample', csvRow(), SAMPLE_ROW],
   ['csv exclusive mode', csvRow({ csv_amount_mode: 'exclusive', csv_sotozei_on: '1', csv_sotozei_off: '0' }).split(',').slice(9, 11).join('/'), '300000/30000'],
   ['csv dept column', csvRow({ csv_property_column: 'dept' }).split(',').slice(3, 7).join('/'), '1/902600//'],
+  ['tax 販管費 → 11', drTax({}), '11/4'],
+  ['tax 原価×ビル → 10', drTax({ dr_account: 5310, dr_dept: 11 }), '10/4'],
+  ['tax 原価×住宅 → 11', drTax({ dr_account: 5310, dr_dept: 26 }), '11/4'],
+  ['tax 原価×寮 → 11', drTax({ dr_account: 5310, dr_dept: 402 }), '11/4'],
+  ['tax 原価×ホテル 軽減 → 10/5', drTax({ dr_account: 5000, dr_dept: 202, dr_tax_code: '軽減8%' }), '10/5'],
+  ['tax 販管費 軽減 → 11/5', drTax({ dr_tax_code: '軽減8%' }), '11/5'],
+  ['tax 不課税 → 40/0', drTax({ dr_account: 5310, dr_dept: 26, dr_tax_code: '不課税' }), '40/0'],
+  ['tax 立替金 → 0/0', drTax({ dr_account: 1520 }), '0/0'],
+  ['tax 住宅区分の変更', csvRow({ csv_common_kinds: '寮・社宅' }, { dr_account: 5310, dr_dept: 26 }).split(',').slice(7, 9).join('/'), '10/4'],
   // 日付の直接入力
   ['date slash', parseDateInput('2026/10/1'), '2026-10-01'],
   ['date hyphen', parseDateInput('2026-10-01'), '2026-10-01'],

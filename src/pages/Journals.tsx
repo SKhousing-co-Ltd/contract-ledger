@@ -57,7 +57,7 @@ export default function Journals() {
     if (!target.length) return
     const missing = masters.taxCodes.filter((t) => target.some((e) => e.dr_tax_code === t.name || e.cr_tax_code === t.name) && !t.kokuyo_tax_code)
     const { buildJournalRows, encodeCsv, JOURNAL_CSV_HEADER } = await import('../lib/csv')
-    const rowsCsv = buildJournalRows(target, { taxCodes: masters.taxCodes, accounts: masters.accounts, setting: s.setting, startSlipNo: slipNo })
+    const rowsCsv = buildJournalRows(target, { taxCodes: masters.taxCodes, accounts: masters.accounts, properties: masters.properties, setting: s.setting, startSlipNo: slipNo })
     const enc = s.setting('csv_encoding') || 'Shift_JIS'
     const data = encodeCsv(header ? [JOURNAL_CSV_HEADER, ...rowsCsv] : rowsCsv, enc)
     const batch = `${period.slice(0, 7)}_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}`
