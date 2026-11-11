@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Contracts from './pages/Contracts'
 import ContractEdit from './pages/ContractEdit'
+import ContractImport from './pages/ContractImport'
 import PropertySummary from './pages/PropertySummary'
 import Monthly from './pages/Monthly'
 import Journals from './pages/Journals'
@@ -81,6 +82,7 @@ function Shell() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/contracts" element={<Contracts />} />
           <Route path="/contracts/new" element={<ContractEdit />} />
+          <Route path="/contracts/import" element={<ContractImport />} />
           <Route path="/contracts/:id" element={<ContractEdit />} />
           <Route path="/properties" element={<PropertySummary />} />
           <Route path="/monthly" element={<Monthly />} />

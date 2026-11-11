@@ -6,6 +6,7 @@ import type { Allocation, Contract, ContractItem, HistoryRow } from '../lib/type
 import { FIELD_LABELS } from '../lib/types'
 import { dateJa, subtractMonths, yen } from '../lib/format'
 import { useUnsavedGuard } from '../lib/useUnsavedGuard'
+import { PAYMENT_TIMINGS, suggestCounter } from '../lib/contractRules'
 import { TERM_SOURCE_LABEL, termInfo } from '../lib/term'
 import { AccountSelect, Badge, DateInput, ErrorBox, Field, Loading, MoneyInput, Notice, PageHeader, Select, judgementTone } from '../components/ui'
 
@@ -32,28 +33,6 @@ const blank = (): Partial<Contract> => ({
   counter_account_code: 3150,
   accounting_only: false,
 })
-
-/** 支払仕訳を自動で作れる支払区分（DB の ct_payment_lag と同じ） */
-const PAYMENT_TIMINGS = ['前月払い', '当月払い', '翌月払い', '翌月末', '翌々月払い']
-
-/** Excel「相手科目コード」の自動判定と同じルール */
-function suggestCounter(c: Partial<Contract>): number | null {
-  if (c.txn_type !== '費用') return null
-  if (c.billing_cycle === '年次' || c.billing_cycle === '半年') return (c.annual_period_note ?? '').includes('前年') ? 3150 : 1550
-  switch (c.payment_timing) {
-    case '前月払い':
-    case '年払い':
-      return 1550
-    case '当月払い':
-      return 3140
-    case '翌月払い':
-    case '翌月末':
-    case '翌々月払い':
-      return 3150
-    default:
-      return null
-  }
-}
 
 const EDITABLE_KEYS = Object.keys(FIELD_LABELS).filter((k) => k !== 'amount_incl') as (keyof Contract)[]
 
