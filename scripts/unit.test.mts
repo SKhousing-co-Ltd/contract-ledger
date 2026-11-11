@@ -3,6 +3,7 @@ import { parseDateInput, subtractMonths } from '../src/lib/format.ts'
 import { addMonthsKeepEnd, termInfo, termMonthsOf } from '../src/lib/term.ts'
 import { buildJournalRows } from '../src/lib/csv.ts'
 import { IMPORT_COLUMNS, parseCsv, readImport, templateRows } from '../src/lib/contractImport.ts'
+import { counterSubDefault, nextCounterSub, withholdingTax } from '../src/lib/contractRules.ts'
 
 // 契約の一括取り込み：テンプレートに1行足した CSV を読む
 const importMasters = {
@@ -81,6 +82,7 @@ const cases: [string, unknown, unknown][] = [
     [true, '契約中', '月末総振', '課税10%', '自動更新']],
   ['import vendor name from master', okRow[0].values.vendor_name, '東芝エレベーター株式会社'],
   ['import counter suggested', okRow[0].values.counter_account_code, 3150],
+  ['import counter sub suggested', okRow[0].values.counter_sub_code, '9'],
   ['import contract name kept as typed', okRow[0].values.contract_name, '昇降機保守（FM）'],
   ['import yearly rules', yearRow[0].errors, ['年次・半年の契約は年払い支払月が必須です', '年次・半年の契約は年払対象開始月が必須です', '年次・半年の契約は金額基準を「年額」か「一括」にしてください']],
   ['import errors', ngRow[0].errors, [
@@ -102,12 +104,22 @@ const cases: [string, unknown, unknown][] = [
   ['tax 販管費 軽減 → 11/5', drTax({ dr_tax_code: '軽減8%' }), '11/5'],
   ['tax 不課税 → 40/0', drTax({ dr_account: 5310, dr_dept: 26, dr_tax_code: '不課税' }), '40/0'],
   ['tax 立替金 → 0/0', drTax({ dr_account: 1520 }), '0/0'],
-  // 補助科目：未払費用 3150 → 9、前払費用 1550 → 1、未払金 3140 は 0。個別の補助科目があればそちら
-  ['sub 3150 → 9', csvRow({}, { cr_account: 3150 }).split(',')[13], '9'],
-  ['sub 1550 → 1', csvRow({}, { dr_account: 1550, cr_account: 1120 }).split(',')[2], '1'],
-  ['sub 3140 → 0', csvRow().split(',')[13], '0'],
-  ['sub entry wins', csvRow({}, { cr_account: 3150, cr_sub_code: '5' }).split(',')[13], '5'],
+  // 補助科目：仕訳（＝契約の相手補助科目）のものを出す。無ければ 0。出力時の当てはめは設定したときだけ
+  ['sub from entry', csvRow({}, { cr_account: 3150, cr_sub_code: '9' }).split(',')[13], '9'],
+  ['sub empty → 0', csvRow({}, { cr_account: 3150 }).split(',')[13], '0'],
   ['sub table setting', csvRow({ csv_sub_by_account: '3150:2' }, { cr_account: 3150 }).split(',')[13], '2'],
+  // 源泉税の2行目：サンプル1の「未払金／預り金（補助1）」と同じ形（両側のセグメントが物件コード、消費税なし）
+  ['csv withholding row', csvRow({}, {
+    entry_type: 'withholding', dr_account: 3140, dr_sub_code: null, dr_amount: 30630, dr_tax_amount: 0, dr_tax_code: null,
+    cr_account: 3180, cr_sub_code: '1', cr_amount: 30630, description: '総振　その他　顧問料 源泉税',
+  }).split(',').slice(0, 22).join(','), '2026/9/30,3140,0,,902600,,1,0,0,30630,,,3180,1,,902600,,1,0,0,30630,'],
+  // 契約側の補助科目の既定値・源泉税の計算
+  ['counter sub default', [counterSubDefault(3150, ''), counterSubDefault(1550, ''), counterSubDefault(3140, '')], ['9', '1', null]],
+  ['counter sub follows account', nextCounterSub(3150, 1550, '9', ''), '1'],
+  ['counter sub keeps manual', nextCounterSub(3150, 1550, '5', ''), '5'],
+  ['counter sub clears for 3140', nextCounterSub(3150, 3140, '9', ''), null],
+  ['withholding 10.21%', withholdingTax(300000), 30630],
+  ['withholding over 1M', withholdingTax(1500000), 102100 + 102100],
   ['tax 寮を対象外に設定', csvRow({ csv_common_kinds: 'その他' }, { dr_account: 5310, dr_dept: 402 }).split(',').slice(7, 9).join('/'), '10/4'],
   ['tax 住宅フラグは区分設定に関係なく11', csvRow({ csv_common_kinds: 'その他' }, { dr_account: 5310, dr_dept: 26 }).split(',').slice(7, 9).join('/'), '11/4'],
   // 日付の直接入力

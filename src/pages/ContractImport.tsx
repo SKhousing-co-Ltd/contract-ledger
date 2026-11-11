@@ -8,7 +8,8 @@ import { IMPORT_COLUMNS, parseCsv, readImport, templateRows, type ImportResult }
 
 /** 契約の一括取り込み（新規登録のみ。既存の契約は変更しない） */
 export default function ContractImport() {
-  const { masters, options, isAccounting, canEdit, reloadMasters, propertyName } = useSession()
+  const { masters, options, isAccounting, canEdit, reloadMasters, propertyName, setting } = useSession()
+  const counterSubDefaults = setting('counter_sub_defaults')
   const [fileName, setFileName] = useState('')
   const [table, setTable] = useState<string[][] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -17,8 +18,8 @@ export default function ContractImport() {
   const [showGuide, setShowGuide] = useState(false)
 
   const result: ImportResult | null = useMemo(
-    () => (table ? readImport(table, { ...masters, options, isAccounting }) : null),
-    [table, masters, options, isAccounting],
+    () => (table ? readImport(table, { ...masters, options, isAccounting, counterSubDefaults }) : null),
+    [table, masters, options, isAccounting, counterSubDefaults],
   )
   const ok = result?.rows.filter((r) => r.errors.length === 0) ?? []
   const ng = result?.rows.filter((r) => r.errors.length > 0) ?? []

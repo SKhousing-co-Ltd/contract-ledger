@@ -43,8 +43,10 @@ export function purchaseTaxCode(baseCode: string, account: number, property: Pic
  *  - csv_property_column segment1（既定）… 物件コードをセグメント1へ（部門コードは空欄）／ dept … 部門コードへ
  *  - csv_counter_segment 経過勘定・預金の側のセグメント（既定 0）
  *  - csv_sub_default     補助科目が無いときの値（既定 0）
- *  - csv_sub_by_account  科目ごとの補助科目「科目:補助」をカンマ区切り（既定 3150:9,1550:1）。
- *                        仕訳・契約に補助科目が入っていればそちらを優先し、無いときにこの対応表、それも無ければ csv_sub_default
+ *  - csv_sub_by_account  出力時に当てはめる科目ごとの補助科目「科目:補助」（既定は空＝使わない）。
+ *                        補助科目は契約の相手補助科目コードで持つ（3150→9、1550→1 は契約側の既定値 counter_sub_defaults）。
+ *                        仕訳に補助科目が入っていればそちらを優先し、無いときにこの対応表、それも無ければ csv_sub_default
+ * 源泉税の仕訳（相手科目／預り金）は会計ソフトのサンプルに合わせ、両側のセグメント1を物件コードにする。
  *  - csv_tax_code_none / csv_rate_kbn_none 消費税の無い側のコード（既定 0 / 0）
  *  - csv_slip_no         blank（既定。会計ソフトで採番）／ sequential … 画面で指定した番号から連番
  *  - csv_date_format     yyyy/M/d（既定）／ yyyy/MM/dd ／ yyyyMMdd
@@ -58,7 +60,7 @@ export const CSV_DEFAULTS: Record<string, string> = {
   csv_property_column: 'segment1',
   csv_counter_segment: '0',
   csv_sub_default: '0',
-  csv_sub_by_account: '3150:9,1550:1',
+  csv_sub_by_account: '',
   csv_tax_code_none: '0',
   csv_rate_kbn_none: '0',
   csv_slip_no: 'blank',
@@ -99,10 +101,10 @@ export function buildJournalRows(entries: JournalEntry[], o: CsvOptions): string
   const isCounter = (code: number) => code === cash || Boolean(acc.get(code)?.is_accrual)
 
   const side = (account: number, sub: string | null, dept: number | null, vendor: number | null,
-    amount: number, taxAmount: number, taxName: string | null) => {
+    amount: number, taxAmount: number, taxName: string | null, segmentByProperty = false) => {
     // 損益科目でない側（経過勘定・預金・立替金など）は消費税コードを付けない
     const t = taxName && acc.get(account)?.bs_pl !== 'BS' ? tax.get(taxName) : undefined
-    const property = isCounter(account) ? get('csv_counter_segment') : s(dept)
+    const property = isCounter(account) && !segmentByProperty ? get('csv_counter_segment') : s(dept)
     const taxCode = t ? purchaseTaxCode(s(t.kokuyo_tax_code), account, dept == null ? undefined : props.get(dept), common) : ''
     const taxAmt = Number(taxAmount || 0)
     return {
@@ -118,8 +120,9 @@ export function buildJournalRows(entries: JournalEntry[], o: CsvOptions): string
   }
 
   return entries.map((e, i) => {
-    const dr = side(e.dr_account, e.dr_sub_code, e.dr_dept, e.dr_vendor, e.dr_amount, e.dr_tax_amount, e.dr_tax_code)
-    const cr = side(e.cr_account, e.cr_sub_code, e.cr_dept, e.cr_vendor, e.cr_amount, e.cr_tax_amount, e.cr_tax_code)
+    const wh = e.entry_type === 'withholding'
+    const dr = side(e.dr_account, e.dr_sub_code, e.dr_dept, e.dr_vendor, e.dr_amount, e.dr_tax_amount, e.dr_tax_code, wh)
+    const cr = side(e.cr_account, e.cr_sub_code, e.cr_dept, e.cr_vendor, e.cr_amount, e.cr_tax_amount, e.cr_tax_code, wh)
     return [
       fmtDate(e.entry_date, get('csv_date_format')),
       ...dr.cols, dr.amount, dr.tax, '',

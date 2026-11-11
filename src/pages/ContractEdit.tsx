@@ -6,7 +6,7 @@ import type { Allocation, Contract, ContractItem, HistoryRow } from '../lib/type
 import { FIELD_LABELS } from '../lib/types'
 import { dateJa, subtractMonths, yen } from '../lib/format'
 import { useUnsavedGuard } from '../lib/useUnsavedGuard'
-import { PAYMENT_TIMINGS, suggestCounter } from '../lib/contractRules'
+import { PAYMENT_TIMINGS, nextCounterSub, suggestCounter, withholdingTax } from '../lib/contractRules'
 import { TERM_SOURCE_LABEL, termInfo } from '../lib/term'
 import { AccountSelect, Badge, DateInput, ErrorBox, Field, Loading, MoneyInput, Notice, PageHeader, Select, judgementTone } from '../components/ui'
 
@@ -31,6 +31,7 @@ const blank = (): Partial<Contract> => ({
   journal_date_rule: '月末',
   renewal_type: '自動更新',
   counter_account_code: 3150,
+  counter_sub_code: '9',
   accounting_only: false,
 })
 
@@ -42,7 +43,7 @@ const snapshotOf = (f: Partial<Contract>, a: Allocation[], it: ContractItem[]) =
   JSON.stringify({
     f: EDITABLE_KEYS.filter((k) => k !== 'contract_no' && k !== 'accounting_only').map((k) => blankToNull(f[k])),
     a: a.map((x) => [x.property_code, blankToNull(x.label), Number(x.amount_excl || 0)]),
-    it: it.map((x) => [blankToNull(x.item_name), blankToNull(x.amount_excl), blankToNull(x.note)]),
+    it: it.map((x) => [blankToNull(x.item_name), blankToNull(x.amount_excl), blankToNull(x.note), blankToNull(x.pl_account_code), blankToNull(x.pl_sub_code)]),
   })
 
 export default function ContractEdit() {
@@ -129,6 +130,10 @@ export default function ContractEdit() {
         const prevSug = suggestCounter(f)
         if (sug && (next.counter_account_code == null || next.counter_account_code === prevSug)) next.counter_account_code = sug
       }
+      // 相手科目が変わったら補助科目の既定値（3150→9、1550→1）を入れる
+      if (next.counter_account_code !== f.counter_account_code) {
+        next.counter_sub_code = nextCounterSub(f.counter_account_code, next.counter_account_code, next.counter_sub_code, s.setting('counter_sub_defaults'))
+      }
       if (k === 'vendor_code' && v !== null) {
         const vend = masters.vendors.find((x) => x.code === Number(v))
         if (vend) next.vendor_name = vend.name
@@ -149,6 +154,19 @@ export default function ContractEdit() {
 
   const allocTotal = allocs.reduce((a, b) => a + Number(b.amount_excl || 0), 0)
   const isCycle = form.billing_cycle === '年次' || form.billing_cycle === '半年'
+  // 科目明細（科目のある内訳行）。DB の仕訳生成と同じく、金額のある行だけを割合に使う
+  const accountLines = items.filter((x) => x.pl_account_code != null && Number(x.amount_excl ?? 0) !== 0)
+  const lineSum = accountLines.length ? accountLines.reduce((a, b) => a + Number(b.amount_excl ?? 0), 0) : null
+  const lineIssue =
+    lineSum == null ? null
+    : items.some((x) => x.pl_account_code != null && !Number(x.amount_excl ?? 0)) ? '科目を入れた行に金額がありません（金額のない行は計上に使いません）'
+    : form.amount_excl != null && lineSum !== Number(form.amount_excl)
+      ? `科目明細の合計（${yen(lineSum)}）が税抜契約金額（${yen(Number(form.amount_excl))}）と一致していません（割合として使います）`
+      : null
+
+  // 源泉税の2行目を作れる契約（DB の ct_withholding_of と同じ条件）
+  const withholdingOk = form.txn_type === '費用' && form.billing_cycle === '月次'
+    && masters.accounts.find((a) => a.code === form.counter_account_code)?.normal_side === '貸方'
   // 自動更新中は「今期の終了日（次回更新日）」を基準にする
   const term = termInfo({
     cancel_date: form.cancel_date ?? null, service_start: form.service_start ?? null,
@@ -175,10 +193,13 @@ export default function ContractEdit() {
     if (isCycle && !['年額', '一括'].includes(form.amount_basis ?? '')) out.push('年次・半年契約は金額基準を「年額」または「一括」にしてください')
     if (form.billing_cycle === '月次' && form.is_active && !PAYMENT_TIMINGS.includes(form.payment_timing ?? ''))
       out.push('支払区分（当月分の支払月）が未設定のため、支払仕訳が作られません')
+    if (Number(form.withholding_amount) > 0 && !withholdingOk)
+      out.push('源泉徴収税額は、月次・費用で相手科目が未払金・未払費用の契約だけ仕訳に反映されます')
+    if (lineIssue) out.push(lineIssue)
     if (allocs.length > 0 && form.amount_excl != null && allocTotal !== Number(form.amount_excl))
       out.push(`按分合計（${yen(allocTotal)}）が税抜契約金額と一致していません（按分比率として使います）`)
     return out
-  }, [form, allocs, allocTotal])
+  }, [form, allocs, allocTotal, withholdingOk, lineIssue])
 
   async function save() {
     setError(null)
@@ -220,7 +241,10 @@ export default function ContractEdit() {
       check(await supabase.from('ct_contract_items').delete().eq('contract_id', cid!))
       if (items.length)
         check(await supabase.from('ct_contract_items').insert(
-          items.filter((x) => x.item_name).map((x, i) => ({ contract_id: cid, item_name: x.item_name, amount_excl: x.amount_excl, note: x.note, sort: i })),
+          items.filter((x) => x.item_name).map((x, i) => ({
+            contract_id: cid, item_name: x.item_name, amount_excl: x.amount_excl, note: x.note, sort: i,
+            pl_account_code: x.pl_account_code ?? null, pl_sub_code: x.pl_sub_code || null,
+          })),
         ))
       baseline.current = snapshotOf(form, allocs, items)
       setSaved('保存しました')
@@ -338,7 +362,7 @@ export default function ContractEdit() {
       <div className="tabs">
         <button className={tab === 'detail' ? 'on' : ''} onClick={() => setTab('detail')}>契約内容</button>
         <button className={tab === 'alloc' ? 'on' : ''} onClick={() => setTab('alloc')}>按分{allocs.length ? `（${allocs.length}）` : ''}</button>
-        <button className={tab === 'items' ? 'on' : ''} onClick={() => setTab('items')}>内訳{items.length ? `（${items.length}）` : ''}</button>
+        <button className={tab === 'items' ? 'on' : ''} onClick={() => setTab('items')}>{accountLines.length ? '内訳・科目明細' : '内訳'}{items.length ? `（${items.length}）` : ''}</button>
         {!isNew && <button className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>変更履歴（{history.length}）</button>}
       </div>
 
@@ -508,6 +532,18 @@ export default function ContractEdit() {
               <Field label="税込契約金額">
                 <input className="num" value={form.amount_excl == null ? '' : yen(Number(form.amount_excl) + Number(form.tax_amount ?? 0))} disabled />
               </Field>
+              <Field label="源泉徴収税額（月額）"
+                hint={withholdingOk
+                  ? (form.withholding_amount ? `毎月「相手科目／預り金」の仕訳を作り、支払は ${yen(Number(form.amount_excl ?? 0) + Number(form.tax_amount ?? 0) - Number(form.withholding_amount))} 円になります` : '顧問料など源泉徴収のある報酬のときに入力')
+                  : '月次・費用で相手科目が未払金・未払費用の契約だけ使えます'}>
+                <div className="row tight">
+                  <MoneyInput value={form.withholding_amount} onChange={(v) => upd('withholding_amount', v)} disabled={!withholdingOk && !form.withholding_amount} />
+                  {withholdingOk && form.amount_excl != null && (
+                    <button type="button" className="small" title="税抜金額 × 10.21%（100万円を超える部分は 20.42%）"
+                      onClick={() => upd('withholding_amount', withholdingTax(Number(form.amount_excl)))}>計算</button>
+                  )}
+                </div>
+              </Field>
               <Field label="インボイス区分">
                 <Select value={form.invoice_type} onChange={(v) => upd('invoice_type', v || null)} options={options('invoice_type')} />
               </Field>
@@ -602,26 +638,34 @@ export default function ContractEdit() {
 
       {tab === 'items' && (
         <section className="card">
-          <h2>契約内訳（管理契約の明細）</h2>
-          <p className="muted small">ビル管理費の内訳（清掃・設備管理・警備など）を記録します。計上額には影響しません。</p>
+          <h2>契約内訳・科目明細</h2>
+          <p className="muted small">
+            内訳（清掃・設備管理・警備など）を記録します。<b>損益科目を入れた行があると、月次計上の計上仕訳をその行の金額の割合で科目ごとに分けます</b>
+            （行数の上限なし。按分があるときは物件ごと × 科目ごと）。支払の仕訳は契約1本のままです。科目を入れない行は計上に影響しません。
+          </p>
+          {lineIssue && <Notice tone="warn">{lineIssue}</Notice>}
           <fieldset disabled={readOnly} className="plain">
             <table className="data compact">
-              <thead><tr><th>項目</th><th className="r">税抜金額</th><th>メモ</th><th /></tr></thead>
+              <thead><tr><th>項目</th><th className="r">税抜金額</th><th>損益科目</th><th>補助科目</th><th>メモ</th><th /></tr></thead>
               <tbody>
                 {items.map((x, i) => (
                   <tr key={i}>
                     <td><input value={x.item_name} onChange={(e) => setItems((xs) => xs.map((y, j) => (j === i ? { ...y, item_name: e.target.value } : y)))} /></td>
                     <td className="r"><MoneyInput value={x.amount_excl} onChange={(v) => setItems((xs) => xs.map((y, j) => (j === i ? { ...y, amount_excl: v } : y)))} /></td>
+                    <td><AccountSelect value={x.pl_account_code ?? null} accounts={accounts} filter={(a) => a.bs_pl !== 'BS' || a.code === 1520}
+                      onChange={(v) => setItems((xs) => xs.map((y, j) => (j === i ? { ...y, pl_account_code: v } : y)))} /></td>
+                    <td><input className="narrow" value={x.pl_sub_code ?? ''} onChange={(e) => setItems((xs) => xs.map((y, j) => (j === i ? { ...y, pl_sub_code: e.target.value || null } : y)))} /></td>
                     <td><input value={x.note ?? ''} onChange={(e) => setItems((xs) => xs.map((y, j) => (j === i ? { ...y, note: e.target.value } : y)))} /></td>
                     <td><button className="small" onClick={() => setItems((xs) => xs.filter((_, j) => j !== i))}>削除</button></td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr><td>合計</td><td className="r mono">{yen(items.reduce((a, b) => a + Number(b.amount_excl ?? 0), 0))}</td><td colSpan={2} /></tr>
+                <tr><td>合計</td><td className="r mono">{yen(items.reduce((a, b) => a + Number(b.amount_excl ?? 0), 0))}</td>
+                  <td colSpan={4} className="small muted">{lineSum != null ? `科目明細の合計 ${yen(lineSum)}／税抜契約金額 ${yen(Number(form.amount_excl ?? 0))}` : ''}</td></tr>
               </tfoot>
             </table>
-            <button onClick={() => setItems((xs) => [...xs, { item_name: '', amount_excl: null, note: null, sort: xs.length }])}>行を追加</button>
+            <button onClick={() => setItems((xs) => [...xs, { item_name: '', amount_excl: null, note: null, sort: xs.length, pl_account_code: null, pl_sub_code: null }])}>行を追加</button>
           </fieldset>
         </section>
       )}

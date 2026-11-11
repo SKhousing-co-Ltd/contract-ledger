@@ -1,7 +1,7 @@
 // 契約の一括取り込み：テンプレートの列定義・CSV の読み取り・行ごとのチェック（画面から切り離した純粋ロジック）
 import type { Account, Contract, Property, TaxCode, Vendor } from './types'
 import { parseDateInput } from './format'
-import { suggestCounter } from './contractRules'
+import { counterSubDefault, suggestCounter } from './contractRules'
 
 type Kind = 'text' | 'int' | 'money' | 'date' | 'month' | 'code' | 'flag'
 
@@ -52,6 +52,8 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
   { key: 'pl_account_code', label: '損益科目コード', kind: 'int', required: true, note: '例：5310 管理費(BM)Ⅰ', example: '5310' },
   { key: 'pl_sub_code', label: '損益補助科目', kind: 'text', note: '', example: '' },
   { key: 'counter_account_code', label: '相手科目コード', kind: 'int', note: '空欄は支払月から自動（翌月払い→3150 未払費用 など）', example: '' },
+  { key: 'counter_sub_code', label: '相手補助科目', kind: 'text', note: '空欄は相手科目から自動（3150→9、1550→1）', example: '' },
+  { key: 'withholding_amount', label: '源泉徴収税額', kind: 'money', note: '顧問料など源泉徴収のある報酬の月額。毎月「相手科目／預り金」の仕訳を作り、支払額から差し引く', example: '' },
   { key: 'recognition_method', label: '計上方式', kind: 'code', category: 'recognition_method', fallback: '月割', note: '空欄は月割', example: '' },
   { key: 'journal_date_rule', label: '仕訳日ルール', kind: 'code', category: 'journal_date_rule', fallback: '月末', note: '空欄は月末', example: '' },
   { key: 'ringi_no', label: '稟議書NO', kind: 'text', note: '', example: '' },
@@ -107,6 +109,8 @@ export interface ImportMasters {
   options: (category: string) => string[]
   /** 総務経理部か（経理のみの物件に登録できる） */
   isAccounting: boolean
+  /** 相手科目ごとの補助科目の既定値（設定 counter_sub_defaults） */
+  counterSubDefaults?: string
 }
 
 export interface ImportRow {
@@ -245,6 +249,17 @@ export function readImport(table: string[][], m: ImportMasters): ImportResult {
       const a = acc.get(v.counter_account_code)
       if (!a) errors.push(`相手科目コード ${v.counter_account_code} が勘定科目にありません`)
       else if (!a.is_accrual) warnings.push(`相手科目（${a.code} ${a.name}）は経過勘定ではありません`)
+    }
+
+    if (v.counter_account_code != null && !v.counter_sub_code) {
+      v.counter_sub_code = counterSubDefault(v.counter_account_code, m.counterSubDefaults ?? '')
+    }
+
+    // 源泉税：月次・費用・相手科目が負債の契約だけ仕訳に反映される
+    if (Number(v.withholding_amount) > 0) {
+      const counterIsLiability = acc.get(v.counter_account_code ?? -1)?.normal_side === '貸方'
+      if (!(v.txn_type === '費用' && v.billing_cycle === '月次' && counterIsLiability))
+        warnings.push('源泉徴収税額は、月次・費用で相手科目が未払金・未払費用の契約だけ仕訳に反映されます')
     }
 
     // 金額・年払い
