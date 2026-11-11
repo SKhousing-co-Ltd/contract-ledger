@@ -102,6 +102,12 @@ const cases: [string, unknown, unknown][] = [
   ['tax 販管費 軽減 → 11/5', drTax({ dr_tax_code: '軽減8%' }), '11/5'],
   ['tax 不課税 → 40/0', drTax({ dr_account: 5310, dr_dept: 26, dr_tax_code: '不課税' }), '40/0'],
   ['tax 立替金 → 0/0', drTax({ dr_account: 1520 }), '0/0'],
+  // 補助科目：未払費用 3150 → 9、前払費用 1550 → 1、未払金 3140 は 0。個別の補助科目があればそちら
+  ['sub 3150 → 9', csvRow({}, { cr_account: 3150 }).split(',')[13], '9'],
+  ['sub 1550 → 1', csvRow({}, { dr_account: 1550, cr_account: 1120 }).split(',')[2], '1'],
+  ['sub 3140 → 0', csvRow().split(',')[13], '0'],
+  ['sub entry wins', csvRow({}, { cr_account: 3150, cr_sub_code: '5' }).split(',')[13], '5'],
+  ['sub table setting', csvRow({ csv_sub_by_account: '3150:2' }, { cr_account: 3150 }).split(',')[13], '2'],
   ['tax 寮を対象外に設定', csvRow({ csv_common_kinds: 'その他' }, { dr_account: 5310, dr_dept: 402 }).split(',').slice(7, 9).join('/'), '10/4'],
   ['tax 住宅フラグは区分設定に関係なく11', csvRow({ csv_common_kinds: 'その他' }, { dr_account: 5310, dr_dept: 26 }).split(',').slice(7, 9).join('/'), '11/4'],
   // 日付の直接入力

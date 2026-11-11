@@ -43,6 +43,8 @@ export function purchaseTaxCode(baseCode: string, account: number, property: Pic
  *  - csv_property_column segment1（既定）… 物件コードをセグメント1へ（部門コードは空欄）／ dept … 部門コードへ
  *  - csv_counter_segment 経過勘定・預金の側のセグメント（既定 0）
  *  - csv_sub_default     補助科目が無いときの値（既定 0）
+ *  - csv_sub_by_account  科目ごとの補助科目「科目:補助」をカンマ区切り（既定 3150:9,1550:1）。
+ *                        仕訳・契約に補助科目が入っていればそちらを優先し、無いときにこの対応表、それも無ければ csv_sub_default
  *  - csv_tax_code_none / csv_rate_kbn_none 消費税の無い側のコード（既定 0 / 0）
  *  - csv_slip_no         blank（既定。会計ソフトで採番）／ sequential … 画面で指定した番号から連番
  *  - csv_date_format     yyyy/M/d（既定）／ yyyy/MM/dd ／ yyyyMMdd
@@ -56,6 +58,7 @@ export const CSV_DEFAULTS: Record<string, string> = {
   csv_property_column: 'segment1',
   csv_counter_segment: '0',
   csv_sub_default: '0',
+  csv_sub_by_account: '3150:9,1550:1',
   csv_tax_code_none: '0',
   csv_rate_kbn_none: '0',
   csv_slip_no: 'blank',
@@ -87,6 +90,11 @@ export function buildJournalRows(entries: JournalEntry[], o: CsvOptions): string
     commonKinds: get('csv_common_kinds').split(',').map((x) => x.trim()).filter(Boolean),
   }
 
+  // 科目ごとの補助科目（例：3150 未払費用 → 9、1550 前払費用 → 1）
+  const subByAccount = new Map(
+    get('csv_sub_by_account').split(',').map((x) => x.split(':').map((y) => y.trim())).filter(([a, b]) => a && b).map(([a, b]) => [Number(a), b]),
+  )
+
   // 経過勘定（未払金・未払費用・前払費用 など）と預金の側は物件で分けない
   const isCounter = (code: number) => code === cash || Boolean(acc.get(code)?.is_accrual)
 
@@ -100,7 +108,7 @@ export function buildJournalRows(entries: JournalEntry[], o: CsvOptions): string
     return {
       // 科目, 補助, 部門, 取引先, 銀行, セグメント1, 消費税コード, 消費税率区分
       cols: [
-        s(account), sub || get('csv_sub_default'), toSegment ? '' : property, s(vendor), '', toSegment ? property : '',
+        s(account), sub || subByAccount.get(account) || get('csv_sub_default'), toSegment ? '' : property, s(vendor), '', toSegment ? property : '',
         t ? taxCode : get('csv_tax_code_none'), t ? s(t.kokuyo_rate_kbn) : get('csv_rate_kbn_none'),
       ],
       amount: String(Number(amount) + (inclusive ? taxAmt : 0)),
