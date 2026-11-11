@@ -12,6 +12,8 @@ export interface Property {
   code: number
   name: string
   kind: string
+  /** 住宅（原価の課税仕入を共通対応 11 にする）。集計用の区分とは別 */
+  is_residential: boolean
   accounting_only: boolean
   is_active: boolean
   sort: number

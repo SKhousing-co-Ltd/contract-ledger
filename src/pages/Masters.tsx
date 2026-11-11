@@ -26,11 +26,12 @@ interface TableDef {
 const DEFS: TableDef[] = [
   {
     id: 'properties', label: '物件', table: 'ct_properties', pk: ['code'], editable: 'master',
-    hint: '物件コードは仕訳CSVの「セグメント1」として出力されます。区分が「住宅」「寮・社宅」の物件は、原価（5000番台）の課税仕入の消費税コードが共通対応（11）になります。「経理のみ」をオンにした物件の契約は、総務経理部だけが閲覧できます。',
+    hint: '物件コードは仕訳CSVの「セグメント1」として出力されます。区分は物件別一覧などの集計に使います。「住宅」をオンにした物件と区分「寮・社宅」の物件は、原価（5000番台）の課税仕入の消費税コードが共通対応（11）になります。「経理のみ」をオンにした物件の契約は、総務経理部だけが閲覧できます。',
     cols: [
       { key: 'code', label: '物件コード', type: 'number', width: 100, readonlyExisting: true },
       { key: 'name', label: '物件名' },
-      { key: 'kind', label: '区分', type: 'select', options: ['ビル', '住宅', 'ホテル', '寮・社宅', '本社', '土地・その他', 'その他'] },
+      { key: 'kind', label: '区分', type: 'select', options: ['ビル', 'ホテル', '寮・社宅', '本社', '土地・その他', 'その他'] },
+      { key: 'is_residential', label: '住宅', type: 'bool' },
       { key: 'accounting_only', label: '経理のみ', type: 'bool' },
       { key: 'is_active', label: '使用中', type: 'bool' },
       { key: 'sort', label: '並び順', type: 'number', width: 80 },

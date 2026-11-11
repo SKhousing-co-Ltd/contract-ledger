@@ -20,7 +20,10 @@ const csvRow = (settings: Record<string, string> = {}, e: Record<string, unknown
     { code: 3140, bs_pl: 'BS', is_accrual: true }, { code: 1520, bs_pl: 'BS', is_accrual: false },
     { code: 6310, bs_pl: 'PL', is_accrual: false }, { code: 5310, bs_pl: 'PL', is_accrual: false }, { code: 5000, bs_pl: 'PL', is_accrual: false },
   ] as never,
-  properties: [{ code: 1, kind: '本社' }, { code: 11, kind: 'ビル' }, { code: 26, kind: '住宅' }, { code: 202, kind: 'ホテル' }, { code: 402, kind: '寮・社宅' }],
+  properties: [
+    { code: 1, kind: '本社', is_residential: false }, { code: 11, kind: 'ビル', is_residential: false },
+    { code: 26, kind: 'ビル', is_residential: true }, { code: 202, kind: 'ホテル', is_residential: false }, { code: 402, kind: '寮・社宅', is_residential: false },
+  ],
   setting: (k) => ({ cash_account: '1120', ...settings })[k] ?? '',
   startSlipNo: 1,
 })[0].join(',')
@@ -40,13 +43,14 @@ const cases: [string, unknown, unknown][] = [
   ['csv dept column', csvRow({ csv_property_column: 'dept' }).split(',').slice(3, 7).join('/'), '1/902600//'],
   ['tax 販管費 → 11', drTax({}), '11/4'],
   ['tax 原価×ビル → 10', drTax({ dr_account: 5310, dr_dept: 11 }), '10/4'],
-  ['tax 原価×住宅 → 11', drTax({ dr_account: 5310, dr_dept: 26 }), '11/4'],
+  ['tax 原価×住宅（区分ビル） → 11', drTax({ dr_account: 5310, dr_dept: 26 }), '11/4'],
   ['tax 原価×寮 → 11', drTax({ dr_account: 5310, dr_dept: 402 }), '11/4'],
   ['tax 原価×ホテル 軽減 → 10/5', drTax({ dr_account: 5000, dr_dept: 202, dr_tax_code: '軽減8%' }), '10/5'],
   ['tax 販管費 軽減 → 11/5', drTax({ dr_tax_code: '軽減8%' }), '11/5'],
   ['tax 不課税 → 40/0', drTax({ dr_account: 5310, dr_dept: 26, dr_tax_code: '不課税' }), '40/0'],
   ['tax 立替金 → 0/0', drTax({ dr_account: 1520 }), '0/0'],
-  ['tax 住宅区分の変更', csvRow({ csv_common_kinds: '寮・社宅' }, { dr_account: 5310, dr_dept: 26 }).split(',').slice(7, 9).join('/'), '10/4'],
+  ['tax 寮を対象外に設定', csvRow({ csv_common_kinds: 'その他' }, { dr_account: 5310, dr_dept: 402 }).split(',').slice(7, 9).join('/'), '10/4'],
+  ['tax 住宅フラグは区分設定に関係なく11', csvRow({ csv_common_kinds: 'その他' }, { dr_account: 5310, dr_dept: 26 }).split(',').slice(7, 9).join('/'), '11/4'],
   // 日付の直接入力
   ['date slash', parseDateInput('2026/10/1'), '2026-10-01'],
   ['date hyphen', parseDateInput('2026-10-01'), '2026-10-01'],
