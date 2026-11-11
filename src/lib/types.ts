@@ -81,6 +81,7 @@ export interface Contract {
   billing_cycle: string | null
   payment_timing: string | null
   payment_method: string | null
+  withholding_amount: number | null
   annual_payment_month: number | null
   annual_period_note: string | null
   amount_basis: string | null
@@ -179,7 +180,7 @@ export interface JournalEntry {
   id: number
   period: string
   entry_date: string
-  entry_type: 'accrual' | 'payment' | 'adjust'
+  entry_type: 'accrual' | 'withholding' | 'payment' | 'adjust'
   source: 'auto' | 'manual'
   contract_id: number | null
   contract_no: number | null
@@ -224,6 +225,7 @@ export interface OpeningBalance {
 
 export const ENTRY_TYPE_LABEL: Record<JournalEntry['entry_type'], string> = {
   accrual: '計上',
+  withholding: '源泉税',
   payment: '支払・入金',
   adjust: '調整',
 }
@@ -254,6 +256,7 @@ export const FIELD_LABELS: Record<string, string> = {
   billing_cycle: '請求サイクル',
   payment_timing: '当月分支払月',
   payment_method: '支払方法',
+  withholding_amount: '源泉徴収税額',
   annual_payment_month: '年払い支払月',
   annual_period_note: '年払い対象期間メモ',
   amount_basis: '金額基準',

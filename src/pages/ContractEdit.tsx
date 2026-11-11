@@ -6,7 +6,7 @@ import type { Allocation, Contract, ContractItem, HistoryRow } from '../lib/type
 import { FIELD_LABELS } from '../lib/types'
 import { dateJa, subtractMonths, yen } from '../lib/format'
 import { useUnsavedGuard } from '../lib/useUnsavedGuard'
-import { PAYMENT_TIMINGS, suggestCounter } from '../lib/contractRules'
+import { PAYMENT_TIMINGS, nextCounterSub, suggestCounter, withholdingTax } from '../lib/contractRules'
 import { TERM_SOURCE_LABEL, termInfo } from '../lib/term'
 import { AccountSelect, Badge, DateInput, ErrorBox, Field, Loading, MoneyInput, Notice, PageHeader, Select, judgementTone } from '../components/ui'
 
@@ -31,6 +31,7 @@ const blank = (): Partial<Contract> => ({
   journal_date_rule: '月末',
   renewal_type: '自動更新',
   counter_account_code: 3150,
+  counter_sub_code: '9',
   accounting_only: false,
 })
 
@@ -129,6 +130,10 @@ export default function ContractEdit() {
         const prevSug = suggestCounter(f)
         if (sug && (next.counter_account_code == null || next.counter_account_code === prevSug)) next.counter_account_code = sug
       }
+      // 相手科目が変わったら補助科目の既定値（3150→9、1550→1）を入れる
+      if (next.counter_account_code !== f.counter_account_code) {
+        next.counter_sub_code = nextCounterSub(f.counter_account_code, next.counter_account_code, next.counter_sub_code, s.setting('counter_sub_defaults'))
+      }
       if (k === 'vendor_code' && v !== null) {
         const vend = masters.vendors.find((x) => x.code === Number(v))
         if (vend) next.vendor_name = vend.name
@@ -149,6 +154,9 @@ export default function ContractEdit() {
 
   const allocTotal = allocs.reduce((a, b) => a + Number(b.amount_excl || 0), 0)
   const isCycle = form.billing_cycle === '年次' || form.billing_cycle === '半年'
+  // 源泉税の2行目を作れる契約（DB の ct_withholding_of と同じ条件）
+  const withholdingOk = form.txn_type === '費用' && form.billing_cycle === '月次'
+    && masters.accounts.find((a) => a.code === form.counter_account_code)?.normal_side === '貸方'
   // 自動更新中は「今期の終了日（次回更新日）」を基準にする
   const term = termInfo({
     cancel_date: form.cancel_date ?? null, service_start: form.service_start ?? null,
@@ -175,10 +183,12 @@ export default function ContractEdit() {
     if (isCycle && !['年額', '一括'].includes(form.amount_basis ?? '')) out.push('年次・半年契約は金額基準を「年額」または「一括」にしてください')
     if (form.billing_cycle === '月次' && form.is_active && !PAYMENT_TIMINGS.includes(form.payment_timing ?? ''))
       out.push('支払区分（当月分の支払月）が未設定のため、支払仕訳が作られません')
+    if (Number(form.withholding_amount) > 0 && !withholdingOk)
+      out.push('源泉徴収税額は、月次・費用で相手科目が未払金・未払費用の契約だけ仕訳に反映されます')
     if (allocs.length > 0 && form.amount_excl != null && allocTotal !== Number(form.amount_excl))
       out.push(`按分合計（${yen(allocTotal)}）が税抜契約金額と一致していません（按分比率として使います）`)
     return out
-  }, [form, allocs, allocTotal])
+  }, [form, allocs, allocTotal, withholdingOk])
 
   async function save() {
     setError(null)
@@ -507,6 +517,18 @@ export default function ContractEdit() {
               </Field>
               <Field label="税込契約金額">
                 <input className="num" value={form.amount_excl == null ? '' : yen(Number(form.amount_excl) + Number(form.tax_amount ?? 0))} disabled />
+              </Field>
+              <Field label="源泉徴収税額（月額）"
+                hint={withholdingOk
+                  ? (form.withholding_amount ? `毎月「相手科目／預り金」の仕訳を作り、支払は ${yen(Number(form.amount_excl ?? 0) + Number(form.tax_amount ?? 0) - Number(form.withholding_amount))} 円になります` : '顧問料など源泉徴収のある報酬のときに入力')
+                  : '月次・費用で相手科目が未払金・未払費用の契約だけ使えます'}>
+                <div className="row tight">
+                  <MoneyInput value={form.withholding_amount} onChange={(v) => upd('withholding_amount', v)} disabled={!withholdingOk && !form.withholding_amount} />
+                  {withholdingOk && form.amount_excl != null && (
+                    <button type="button" className="small" title="税抜金額 × 10.21%（100万円を超える部分は 20.42%）"
+                      onClick={() => upd('withholding_amount', withholdingTax(Number(form.amount_excl)))}>計算</button>
+                  )}
+                </div>
               </Field>
               <Field label="インボイス区分">
                 <Select value={form.invoice_type} onChange={(v) => upd('invoice_type', v || null)} options={options('invoice_type')} />
