@@ -60,12 +60,16 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
   { key: 'note2', label: '備考（管理・証憑）', kind: 'text', note: '', example: '' },
 ]
 
-/** テンプレートの見本行の目印（取り込み時は読み飛ばす） */
-export const EXAMPLE_MARK = '（記入例・この行は取り込まれません）'
+/**
+ * テンプレートの記入例の行の目印。物件コードの欄に書き、取り込み時はこの行を読み飛ばす。
+ * （以前は契約名の欄に書いていたが「契約名が取り込まれない」と読めて紛らわしいため移した。古いテンプレートの行も読み飛ばす）
+ */
+export const EXAMPLE_MARK = '記入例'
+const OLD_EXAMPLE_MARK = '（記入例・この行は取り込まれません）'
 
 export function templateRows(): string[][] {
   const head = IMPORT_COLUMNS.map((c) => (c.required ? `${c.label}*` : c.label))
-  const example = IMPORT_COLUMNS.map((c) => (c.key === 'contract_name' ? `${c.example}${EXAMPLE_MARK}` : c.example))
+  const example = IMPORT_COLUMNS.map((c) => (c.key === 'property_code' ? EXAMPLE_MARK : c.example))
   return [head, example]
 }
 
@@ -150,7 +154,7 @@ export function readImport(table: string[][], m: ImportMasters): ImportResult {
       const s = idx === undefined ? '' : (cells[idx] ?? '').trim()
       return normalize ? s.normalize('NFKC') : s
     }
-    if (raw('contract_name', false).includes(EXAMPLE_MARK)) return
+    if (raw('property_code').startsWith(EXAMPLE_MARK) || raw('contract_name', false).includes(OLD_EXAMPLE_MARK)) return
 
     const v: Partial<Contract> = {}
     const errors: string[] = []

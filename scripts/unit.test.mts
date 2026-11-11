@@ -72,6 +72,8 @@ const c = (o: object) => ({ cancel_date: null, service_start: null, service_end:
 const cases: [string, unknown, unknown][] = [
   // 契約の一括取り込み
   ['import skips example row', okRow.length, 1],
+  ['import skips old-style example row', readImport(parseCsv(['物件コード*,契約名*,請求サイクル*,当月分支払月*,金額基準*,損益科目コード*', '11,保守料（記入例・この行は取り込まれません）,月次,翌月払い,月額,5310'].join('\r\n')), importMasters).rows.length, 0],
+  ['template example row', templateRows()[1].slice(0, 2), ['記入例', 'エレベーター保守料']],
   ['import ok row has no errors', okRow[0].errors, []],
   ['import values', [okRow[0].values.property_code, okRow[0].values.amount_excl, okRow[0].values.tax_amount, okRow[0].values.service_start],
     [17, 31000, 3100, '2026-11-01']],
