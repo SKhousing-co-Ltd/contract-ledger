@@ -9,6 +9,10 @@ import { useUnsavedGuard } from '../lib/useUnsavedGuard'
 import { TERM_SOURCE_LABEL, termInfo } from '../lib/term'
 import { AccountSelect, Badge, DateInput, ErrorBox, Field, Loading, MoneyInput, Notice, PageHeader, Select, judgementTone } from '../components/ui'
 
+/** マスタから消した値でも、登録済みの契約では選択肢に残す（保存時に消えないように） */
+const withCurrent = (opts: string[], current: string | null | undefined) =>
+  current && !opts.includes(current) ? [...opts, current] : opts
+
 const MONTHS = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}月` }))
 
 const blank = (): Partial<Contract> => ({
@@ -484,6 +488,10 @@ export default function ContractEdit() {
               </Field>
               <Field label="当月分 支払月" hint="未払費用／前払費用の残高計算に使います">
                 <Select value={form.payment_timing} onChange={(v) => upd('payment_timing', v || null)} options={options('payment_timing')} />
+              </Field>
+              <Field label="支払方法" hint="選択肢はマスタ →「選択肢」の支払方法で追加できます">
+                <Select value={form.payment_method} onChange={(v) => upd('payment_method', v || null)}
+                  options={withCurrent(options('payment_method'), form.payment_method)} />
               </Field>
               <Field label="金額基準" hint="月額・年額＝定額／従量・手入力＝変動（毎月実績入力）">
                 <Select value={form.amount_basis} onChange={(v) => upd('amount_basis', v || null)} options={options('amount_basis')} />

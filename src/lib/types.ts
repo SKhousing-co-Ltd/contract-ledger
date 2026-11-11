@@ -78,6 +78,7 @@ export interface Contract {
   first_billing_date: string | null
   billing_cycle: string | null
   payment_timing: string | null
+  payment_method: string | null
   annual_payment_month: number | null
   annual_period_note: string | null
   amount_basis: string | null
@@ -250,6 +251,7 @@ export const FIELD_LABELS: Record<string, string> = {
   first_billing_date: '初回請求日',
   billing_cycle: '請求サイクル',
   payment_timing: '当月分支払月',
+  payment_method: '支払方法',
   annual_payment_month: '年払い支払月',
   annual_period_note: '年払い対象期間メモ',
   amount_basis: '金額基準',

@@ -77,7 +77,7 @@ const DEFS: TableDef[] = [
     id: 'codes', label: '選択肢', table: 'ct_code_values', pk: ['category', 'value'], editable: 'master',
     hint: '契約画面のプルダウンの選択肢です。「請求サイクル」「金額基準」「支払月」の値は計上ロジックで使うため、既存の値の名前は変えないでください。',
     cols: [
-      { key: 'category', label: '分類', readonlyExisting: true, type: 'select', options: ['status', 'txn_type', 'renewal_type', 'billing_cycle', 'payment_timing', 'amount_basis', 'invoice_type', 'recognition_method', 'rounding', 'journal_date_rule', 'department'] },
+      { key: 'category', label: '分類', readonlyExisting: true, type: 'select', options: ['status', 'txn_type', 'renewal_type', 'billing_cycle', 'payment_timing', 'payment_method', 'amount_basis', 'invoice_type', 'recognition_method', 'rounding', 'journal_date_rule', 'department'] },
       { key: 'value', label: '値', readonlyExisting: true },
       { key: 'sort', label: '並び順', type: 'number', width: 80 },
     ],
@@ -96,7 +96,7 @@ const DEFS: TableDef[] = [
 ]
 
 const CATEGORY_LABEL: Record<string, string> = {
-  status: '契約状態', txn_type: '取引区分', renewal_type: '更新区分', billing_cycle: '請求サイクル', payment_timing: '支払月',
+  status: '契約状態', txn_type: '取引区分', renewal_type: '更新区分', billing_cycle: '請求サイクル', payment_timing: '支払月', payment_method: '支払方法',
   amount_basis: '金額基準', invoice_type: 'インボイス区分', recognition_method: '計上方式', rounding: '端数処理', journal_date_rule: '仕訳日ルール', department: '担当部署',
 }
 

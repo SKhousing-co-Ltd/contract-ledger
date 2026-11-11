@@ -115,12 +115,12 @@ export default function Contracts() {
   }, [filtered])
 
   function exportCsv() {
-    const head = ['契約ID', '枝番', '有効', '契約状態', '物件コード', '物件名', '取引先コード', '取引先名', '契約名', '請求サイクル', '支払月', '金額基準', '税抜金額', '消費税', '税込金額', '月額換算(税抜)', '年額換算(税抜)', '損益科目', '相手科目', 'サービス開始日', 'サービス終了日', '解約日', '更新区分', '更新期間(か月)', '期間の状況', '今期の終了日', '計上対象', '確認事項']
+    const head = ['契約ID', '枝番', '有効', '契約状態', '物件コード', '物件名', '取引先コード', '取引先名', '契約名', '請求サイクル', '支払月', '支払方法', '金額基準', '税抜金額', '消費税', '税込金額', '月額換算(税抜)', '年額換算(税抜)', '損益科目', '相手科目', 'サービス開始日', 'サービス終了日', '解約日', '更新区分', '更新期間(か月)', '期間の状況', '今期の終了日', '計上対象', '確認事項']
     const body = filtered.map((r) => {
       const t = termInfo(r)
       return [
         r.contract_no, r.version, r.is_active ? '有効' : '無効', r.status, r.property_code, r.property_name, r.vendor_code, r.vendor_name,
-        r.contract_name, r.billing_cycle, r.payment_timing, r.amount_basis, r.amount_excl, r.tax_amount, r.amount_incl,
+        r.contract_name, r.billing_cycle, r.payment_timing, r.payment_method, r.amount_basis, r.amount_excl, r.tax_amount, r.amount_incl,
         r.monthly_excl, r.annual_excl, r.pl_account_name, r.counter_account_name, r.service_start, r.service_end, r.cancel_date,
         r.renewal_type, t.termMonths ?? r.renewal_term_months, TERM_KIND_LABEL[t.kind], t.kind === 'auto' || t.kind === 'active' ? t.date : '',
         r.calc_target, r.issues,
@@ -201,7 +201,7 @@ export default function Contracts() {
                   <td className="ellipsis" title={r.vendor_name ?? ''}>{r.vendor_name}</td>
                   <td className="ellipsis" title={r.contract_name}>{r.contract_name}</td>
                   <td><Badge tone={judgementTone(r.status)}>{r.status}</Badge></td>
-                  <td className="nowrap small">{[r.billing_cycle, r.payment_timing].filter(Boolean).join('／')}</td>
+                  <td className="nowrap small">{[r.billing_cycle, r.payment_timing].filter(Boolean).join('／')}{r.payment_method && <div className="muted">{r.payment_method}</div>}</td>
                   <td className="nowrap small">{r.amount_basis}</td>
                   <td className="r mono">{yen(r.amount_excl)}</td>
                   <td className="r mono">{yen(r.monthly_excl)}</td>
