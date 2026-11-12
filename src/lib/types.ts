@@ -115,6 +115,7 @@ export interface ContractView extends Contract {
   monthly_excl: number | null
   annual_excl: number | null
   allocation_count: number
+  line_count?: number
   calc_target: '対象' | '対象外' | '要設定'
   issues: string | null
 }
@@ -138,6 +139,8 @@ export interface ContractItem {
   /** 損益科目。入っている行があれば計上をこの行の金額の割合で科目別に分ける（科目明細） */
   pl_account_code?: number | null
   pl_sub_code?: string | null
+  /** 計上する物件（空は契約の物件） */
+  property_code?: number | null
 }
 
 export interface HistoryRow {

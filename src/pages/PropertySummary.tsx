@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, check } from '../lib/supabase'
 import { useSession } from '../lib/session'
-import type { Allocation, ContractView } from '../lib/types'
+import type { ContractView } from '../lib/types'
 import { downloadCsvUtf8, yen } from '../lib/format'
 import { ErrorBox, Loading, PageHeader, Select } from '../components/ui'
 import { fetchContracts } from './Contracts'
@@ -18,7 +18,8 @@ interface Line {
 export default function PropertySummary() {
   const { masters, propertyName } = useSession()
   const [rows, setRows] = useState<ContractView[] | null>(null)
-  const [allocs, setAllocs] = useState<Allocation[]>([])
+  // 金額の内訳（明細）：物件・科目ごとの割り振り。旧来の按分しか無い契約は按分で割り振る
+  const [allocs, setAllocs] = useState<{ contract_id: number; property_code: number | null; amount_excl: number; pl_account_code: number | null }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [account, setAccount] = useState('')
   const [kind, setKind] = useState('')
@@ -27,24 +28,31 @@ export default function PropertySummary() {
   const [open, setOpen] = useState<number | null>(null)
 
   useEffect(() => {
-    Promise.all([fetchContracts(), supabase.from('ct_contract_allocations').select('*').range(0, 9999)])
-      .then(([c, a]) => {
+    Promise.all([
+      fetchContracts(),
+      // 列を指定せずに読む（物件の列が無い古い DB でも動くように）
+      supabase.from('ct_contract_items').select('*').not('pl_account_code', 'is', null).range(0, 9999),
+      supabase.from('ct_contract_allocations').select('contract_id, property_code, amount_excl').range(0, 9999),
+    ])
+      .then(([c, it, a]) => {
         setRows(c)
-        setAllocs(check(a) as Allocation[])
+        const items = check(it) as { contract_id: number; property_code: number | null; amount_excl: number; pl_account_code: number | null }[]
+        const withItems = new Set(items.map((x) => x.contract_id))
+        const legacy = (check(a) as { contract_id: number; property_code: number; amount_excl: number }[])
+          .filter((x) => !withItems.has(x.contract_id)).map((x) => ({ ...x, pl_account_code: null }))
+        setAllocs([...items, ...legacy])
       })
       .catch((e) => setError(e.message))
   }, [])
 
   const accountsUsed = useMemo(() => {
-    const set = new Set((rows ?? []).map((r) => r.pl_account_code).filter((x): x is number => x != null))
+    const set = new Set([...(rows ?? []).map((r) => r.pl_account_code), ...allocs.map((a) => a.pl_account_code)].filter((x): x is number => x != null))
     return masters.accounts.filter((a) => set.has(a.code))
-  }, [rows, masters.accounts])
+  }, [rows, allocs, masters.accounts])
 
   const data = useMemo(() => {
     if (!rows) return null
-    const live = rows.filter(
-      (r) => r.is_active && (r.status === '契約中' || r.status === '解約予定') && (!account || String(r.pl_account_code) === account),
-    )
+    const live = rows.filter((r) => r.is_active && (r.status === '契約中' || r.status === '解約予定'))
     const lines: Line[] = []
     live.forEach((c) => {
       const factor = tax === 'incl' && c.amount_excl ? Number(c.amount_incl ?? c.amount_excl) / Number(c.amount_excl) : 1
@@ -52,9 +60,14 @@ export default function PropertySummary() {
       const y = Number(c.annual_excl ?? 0) * factor
       const al = allocs.filter((a) => a.contract_id === c.id)
       const tot = al.reduce((s, a) => s + Number(a.amount_excl), 0)
-      if (split && al.length && tot) {
-        al.forEach((a) => lines.push({ property_code: a.property_code, c, monthly: (m * Number(a.amount_excl)) / tot, annual: (y * Number(a.amount_excl)) / tot, ratio: Number(a.amount_excl) / tot }))
-      } else lines.push({ property_code: c.property_code, c, monthly: m, annual: y, ratio: 1 })
+      // 科目の絞り込みは明細の科目で行う（明細の無い契約は契約の科目）
+      const accOf = (a?: { pl_account_code: number | null }) => a?.pl_account_code ?? c.pl_account_code
+      if (al.length && tot && (split || account)) {
+        al.filter((a) => !account || String(accOf(a)) === account).forEach((a) => lines.push({
+          property_code: split ? a.property_code ?? c.property_code : c.property_code, c,
+          monthly: (m * Number(a.amount_excl)) / tot, annual: (y * Number(a.amount_excl)) / tot, ratio: Number(a.amount_excl) / tot,
+        }))
+      } else if (!account || String(accOf()) === account) lines.push({ property_code: c.property_code, c, monthly: m, annual: y, ratio: 1 })
     })
     const byProp = new Map<number, Line[]>()
     lines.forEach((l) => byProp.set(l.property_code, [...(byProp.get(l.property_code) ?? []), l]))
@@ -108,7 +121,7 @@ export default function PropertySummary() {
         <Select value={tax} onChange={(v) => setTax((v || 'excl') as 'excl' | 'incl')} placeholder="税抜" options={[{ value: 'excl', label: '税抜' }, { value: 'incl', label: '税込' }]} />
         <label className="check">
           <input type="checkbox" checked={split} onChange={(e) => setSplit(e.target.checked)} />
-          按分を反映（ビル／ホテルに分ける）
+          金額の内訳の物件に分ける（ビル／ホテルなど）
         </label>
       </div>
       {!data ? (
@@ -146,7 +159,7 @@ export default function PropertySummary() {
                         <td colSpan={2}>
                           <Link to={`/contracts/${l.c.id}`}>{l.c.contract_no}-{l.c.version}</Link> {l.c.contract_name}
                           <span className="muted small">　{l.c.vendor_name}</span>
-                          {l.ratio < 1 && <span className="tag">按分 {(l.ratio * 100).toFixed(1)}%</span>}
+                          {l.ratio < 1 && <span className="tag">内訳 {(l.ratio * 100).toFixed(1)}%</span>}
                         </td>
                         <td className="small" colSpan={2}>{[l.c.billing_cycle, l.c.amount_basis, l.c.pl_account_name].filter(Boolean).join('・')}</td>
                         <td className="r mono">{yen(l.monthly)}</td>

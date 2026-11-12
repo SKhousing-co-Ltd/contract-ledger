@@ -7,6 +7,9 @@ import { dateJa, downloadCsvUtf8, yen } from '../lib/format'
 import { Badge, Empty, ErrorBox, Loading, PageHeader, Select, judgementTone } from '../components/ui'
 import { TERM_KIND_LABEL, TERM_SOURCE_LABEL, termInfo, type TermKind } from '../lib/term'
 
+/** 計上対象の判定（DB の値）を画面の言葉にする */
+const CALC_LABEL: Record<string, string> = { 対象: '計上する', 対象外: '計上しない', 要設定: '要設定' }
+
 /** 終了日の欄：何の日付かが分かるように表示する */
 function TermCell({ c }: { c: ContractView }) {
   const t = termInfo(c)
@@ -155,7 +158,7 @@ export default function Contracts() {
           options={masters.properties.map((p) => ({ value: p.code, label: `${p.code} ${p.name}` }))}
         />
         <Select value={status} onChange={(v) => set('status', v)} placeholder="すべての状態" options={options('status')} />
-        <Select value={target} onChange={(v) => set('target', v)} placeholder="計上対象：すべて" options={['対象', '要設定', '対象外']} />
+        <Select value={target} onChange={(v) => set('target', v)} placeholder="計上：すべて" options={[{ value: '対象', label: '計上する' }, { value: '対象外', label: '計上しない' }, { value: '要設定', label: '要設定' }]} />
         <Select value={term} onChange={(v) => set('term', v)} placeholder="契約期間：すべて"
           options={(['active', 'auto', 'expired', 'cancel', 'none'] as TermKind[]).map((k) => ({ value: k, label: TERM_KIND_LABEL[k] }))} />
         <label className="check">
@@ -196,7 +199,7 @@ export default function Contracts() {
                   </td>
                   <td className="nowrap">
                     {r.property_name}
-                    {r.allocation_count > 0 && <span className="tag" title="複数物件に按分">按分</span>}
+                    {r.allocation_count > 1 && <span className="tag" title="金額の内訳で複数の物件に分けて計上">複数物件</span>}{(r.line_count ?? 0) > 1 && r.allocation_count <= 1 && <span className="tag" title="金額の内訳で複数の科目に分けて計上">複数科目</span>}
                     {r.accounting_only && <span className="tag tag-lock" title="総務経理部のみ閲覧">経理</span>}
                   </td>
                   <td className="ellipsis" title={r.vendor_name ?? ''}>{r.vendor_name}</td>
@@ -210,7 +213,7 @@ export default function Contracts() {
                   <td className="nowrap small">{r.counter_account_name}</td>
                   <td className="nowrap small"><TermCell c={r} /></td>
                   <td title={r.issues ?? ''}>
-                    <Badge tone={judgementTone(r.calc_target)}>{r.calc_target}</Badge>
+                    <Badge tone={judgementTone(r.calc_target)}>{CALC_LABEL[r.calc_target] ?? r.calc_target}</Badge>
                   </td>
                 </tr>
               ))}
