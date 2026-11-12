@@ -30,7 +30,8 @@ export default function PropertySummary() {
   useEffect(() => {
     Promise.all([
       fetchContracts(),
-      supabase.from('ct_contract_items').select('contract_id, property_code, amount_excl, pl_account_code').not('pl_account_code', 'is', null).range(0, 9999),
+      // 列を指定せずに読む（物件の列が無い古い DB でも動くように）
+      supabase.from('ct_contract_items').select('*').not('pl_account_code', 'is', null).range(0, 9999),
       supabase.from('ct_contract_allocations').select('contract_id, property_code, amount_excl').range(0, 9999),
     ])
       .then(([c, it, a]) => {

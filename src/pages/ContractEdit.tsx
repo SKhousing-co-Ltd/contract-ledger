@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase, check } from '../lib/supabase'
 import { useSession } from '../lib/session'
-import type { Contract, ContractItem, HistoryRow } from '../lib/types'
+import type { Allocation, Contract, ContractItem, HistoryRow } from '../lib/types'
 import { FIELD_LABELS } from '../lib/types'
 import { dateJa, subtractMonths, yen } from '../lib/format'
 import { useUnsavedGuard } from '../lib/useUnsavedGuard'
@@ -51,9 +51,13 @@ const snapshotOf = (f: Partial<Contract>, it: ContractItem[]) =>
  * 明細が保存されていない契約は「契約の物件 × 契約の科目 × 契約金額」の1行として表示する。
  * 物件が空の行は契約の物件。
  */
-function linesOf(c: Partial<Contract>, items: ContractItem[]): ContractItem[] {
+function linesOf(c: Partial<Contract>, items: ContractItem[], allocs: Allocation[] = []): ContractItem[] {
   const acc = items.filter((x) => x.pl_account_code != null)
   if (acc.length) return acc.map((x, i) => ({ ...x, property_code: x.property_code ?? c.property_code ?? null, sort: i }))
+  // 旧来の按分しか無い契約は、按分先の物件 × 契約の科目の行として表示する（保存すると明細になる）
+  if (allocs.length)
+    return allocs.map((a, i) => ({ item_name: a.label ?? '', amount_excl: a.amount_excl, note: null, sort: i,
+      pl_account_code: c.pl_account_code ?? null, pl_sub_code: c.pl_sub_code ?? null, property_code: a.property_code }))
   return [{ item_name: '', amount_excl: c.amount_excl ?? null, note: null, sort: 0,
     pl_account_code: c.pl_account_code ?? null, pl_sub_code: c.pl_sub_code ?? null, property_code: c.property_code ?? null }]
 }
@@ -104,12 +108,13 @@ export default function ContractEdit() {
       try {
         const c = check(await supabase.from('ct_contracts').select('*').eq('id', Number(id)).maybeSingle()) as Contract | null
         if (!c) throw new Error('契約が見つからないか、閲覧権限がありません')
-        const [it, h, v] = await Promise.all([
+        const [it, al, h, v] = await Promise.all([
           supabase.from('ct_contract_items').select('*').eq('contract_id', c.id).order('sort'),
+          supabase.from('ct_contract_allocations').select('*').eq('contract_id', c.id).order('sort'),
           supabase.from('ct_contract_history').select('*').eq('contract_no', c.contract_no).order('changed_at', { ascending: false }),
           supabase.from('ct_contracts').select('*').eq('contract_no', c.contract_no).order('version'),
         ])
-        const lines = linesOf(c, check(it) as ContractItem[])
+        const lines = linesOf(c, check(it) as ContractItem[], check(al) as Allocation[])
         baseline.current = snapshotOf(c, lines)
         setForm(c)
         setItems(lines)
@@ -550,11 +555,15 @@ export default function ContractEdit() {
               <Field label="請求サイクル">
                 <Select value={form.billing_cycle} onChange={(v) => upd('billing_cycle', v || null)} options={options('billing_cycle')} />
               </Field>
+              <Field label="初回請求日"><DateInput value={form.first_billing_date} onChange={(v) => upd('first_billing_date', v)} /></Field>
               <Field label="金額基準" hint="月額・年額＝定額／従量・手入力＝毎月実績を入力">
                 <Select value={form.amount_basis} onChange={(v) => upd('amount_basis', v || null)} options={options('amount_basis')} />
               </Field>
               <Field label="税区分">
                 <Select value={form.tax_code} onChange={(v) => upd('tax_code', v || null)} options={masters.taxCodes.map((t) => t.name)} />
+              </Field>
+              <Field label="端数処理" hint="年額の月割は初月で調整、消費税は切捨てで計算します">
+                <Select value={form.rounding} onChange={(v) => upd('rounding', v || null)} options={options('rounding')} />
               </Field>
             </div>
             {isCycle && (
@@ -690,7 +699,7 @@ export default function ContractEdit() {
 
           {/* ---------- 管理・証憑 ---------- */}
           <details className="card collapsible" open={Boolean(form.ringi_no || form.contract_url || form.note2)}>
-            <summary><h2>管理・証憑</h2><span className="muted small">稟議書NO・契約書URL・インボイス区分・初回請求日・端数処理・備考</span></summary>
+            <summary><h2>管理・証憑</h2><span className="muted small">稟議書NO・契約書URL・インボイス区分・備考</span></summary>
             <div className="grid">
               <Field label="稟議書NO"><input value={form.ringi_no ?? ''} onChange={(e) => upd('ringi_no', e.target.value)} /></Field>
               <Field label="契約書URL" wide>
@@ -701,10 +710,6 @@ export default function ContractEdit() {
               </Field>
               <Field label="インボイス区分">
                 <Select value={form.invoice_type} onChange={(v) => upd('invoice_type', v || null)} options={options('invoice_type')} />
-              </Field>
-              <Field label="初回請求日"><DateInput value={form.first_billing_date} onChange={(v) => upd('first_billing_date', v)} /></Field>
-              <Field label="端数処理">
-                <Select value={form.rounding} onChange={(v) => upd('rounding', v || null)} options={options('rounding')} />
               </Field>
               <Field label="備考（管理・証憑）" wide><textarea rows={2} value={form.note2 ?? ''} onChange={(e) => upd('note2', e.target.value || null)} /></Field>
             </div>
