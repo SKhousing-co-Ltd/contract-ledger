@@ -261,3 +261,27 @@ table.diff .new { color: var(--ok); font-weight: 600; }
 .link-list { margin: 6px 0 0; padding-left: 18px; line-height: 1.8; }
 table.data tr.row-error td { background: color-mix(in srgb, var(--bad) 6%, transparent); }
 input.narrow { width: 64px; }
+
+/* 契約編集（2026-11 作り替え） */
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.card-head h2 { margin: 0; }
+.term-status { border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+.term-active { background: var(--ok-soft); color: var(--ok); }
+.term-auto { background: var(--info-soft); color: var(--info); }
+.term-expired { background: var(--bad-soft, #fdecea); color: var(--bad); }
+.term-cancel { background: var(--warn-soft); color: #6d4600; }
+.term-none { background: var(--surface-2); color: var(--muted); }
+.inline-dialog { border: 1px solid var(--border, #d9dee7); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; background: var(--surface-2); }
+.inline-dialog h3 { margin: 0 0 4px; font-size: 15px; }
+.sub-grid { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border, #d9dee7); }
+.lines-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin: 16px 0 6px; font-weight: 600; font-size: 13px; }
+.lines-head .small { font-weight: 400; }
+.lines-table select, .lines-table input { width: 100%; }
+.lines-table td:first-child { min-width: 150px; }
+.inline-money { display: inline-block; width: 110px; margin: 0 6px; vertical-align: middle; }
+.radio-row { gap: 16px; min-height: 34px; }
+details.collapsible > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 12px; }
+details.collapsible > summary h2 { margin: 0; }
+details.collapsible > summary::before { content: '▸'; color: var(--muted); }
+details.collapsible[open] > summary::before { content: '▾'; }
+details.collapsible[open] > summary { margin-bottom: 12px; }

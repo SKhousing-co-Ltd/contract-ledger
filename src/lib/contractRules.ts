@@ -1,9 +1,12 @@
 import type { Contract } from './types'
 
-/** 相手科目（経過勘定）の自動提案。Excel「相手科目コード」の自動判定と同じルール */
+/**
+ * 相手科目（経過勘定）の自動提案。年払い・半年払いは前払い（1550 前払費用）を既定にし、
+ * 後払いは画面の「前払い／後払い」で 3150 未払費用を選ぶ（以前のメモ欄の「前年」による判定はやめた）
+ */
 export function suggestCounter(c: Partial<Contract>): number | null {
   if (c.txn_type !== '費用') return null
-  if (c.billing_cycle === '年次' || c.billing_cycle === '半年') return (c.annual_period_note ?? '').includes('前年') ? 3150 : 1550
+  if (c.billing_cycle === '年次' || c.billing_cycle === '半年') return 1550
   switch (c.payment_timing) {
     case '前月払い':
     case '年払い':
